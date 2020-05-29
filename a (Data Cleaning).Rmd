@@ -1,0 +1,62 @@
+---
+title: "a"
+author: "adib&fatur"
+date: "5/29/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r rlib}
+library(tm)
+library(wordcloud2)
+library(twitteR)
+library(rtweet)
+setup_twitter_oauth('F4LxSgGrfikSyCka041iuh38U','5qzQQFsTiCF92iXyFY5oCtpW8GX0rFDStWwYk5v4iMaLA5z0zK','1919983909-iOT9t0hMoJkZRLLFIglSJyL1PQzhETAjV2NsDtv','TeHAWOq9I7BuzgeWtheIM2y5smQuFlTwLwDHyPbqD7ZhG')
+```
+
+```{r data}
+tw = searchTwitter('#lawancovid', 
+                            n = 100,
+                            retryOnRateLimit = 10e3)
+saveRDS(tw,file = 'tweet-mentah.rds')
+```
+
+```{r load dataset}
+tw <- readRDS('tweet-mentah.rds')
+d = twListToDF(tw)
+komen <- d$text
+komenc <- Corpus(VectorSource(komen))
+removeURL <- function(x) gsub("http[^[:space:]]*", "", x)
+twitclean <- tm_map(komenc, removeURL)
+removeNL <- function(y) gsub("\n", " ", y)
+twitclean <- tm_map(twitclean, removeNL)
+replacecomma <- function(y) gsub(",", "", y)
+twitclean <- tm_map(twitclean, replacecomma)
+removeRT <- function(y) gsub("RT ", "", y)
+twitclean <- tm_map(twitclean, removeRT)
+removetitik2 <- function(y) gsub(":", "", y)
+twitclean <- tm_map(twitclean, removetitik2)
+removetitikkoma <- function(y) gsub(";", " ", y)
+twitclean <- tm_map(twitclean, removetitikkoma)
+removetitik3 <- function(y) gsub("p…", "", y)
+twitclean <- tm_map(twitclean, removetitik3)
+removeamp <- function(y) gsub("&amp;", "", y)
+twitclean <- tm_map(twitclean, removeamp)
+removeUN <- function(z) gsub("@\\w+", "", z)
+twitclean <- tm_map(twitclean, removeUN)
+remove.all <- function(xy) gsub("[^[:alpha:][:space:]]*", "", xy)
+twitclean <- tm_map(twitclean,remove.all)
+twitclean <- tm_map(twitclean, removePunctuation)
+twitclean <- tm_map(twitclean, tolower)
+myStopwords = readLines("stop.txt")
+twitclean <- tm_map(twitclean,removeWords,myStopwords)
+twitclean <- tm_map(twitclean , removeWords, 
+                    c('indonesia','presiden','jokowi','joko',
+                      'widodo','pak','bpk','bilang',''))
+dataframe<-data.frame(text=unlist(sapply(twitclean, `[`)), stringsAsFactors=F)
+View(dataframe)
+write.csv(dataframe,file = 'twitclean.csv')
+```

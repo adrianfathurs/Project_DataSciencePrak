@@ -1,0 +1,246 @@
+---
+title: "covjadi"
+author: "adib&fatur"
+date: "5/28/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r required}
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(twitteR, wordcloud, tm, tidyr, tidytext, syuzhet, ngram, NLP, RColorBrewer, RTextTools, e1071, caret, knitr)
+```
+
+```{r installib}
+library(twitteR)
+library(ROAuth)
+library(tm)
+library(rtweet)
+library(wordcloud2)
+library(e1071)
+library(caret)
+library(syuzhet)
+setup_twitter_oauth('F4LxSgGrfikSyCka041iuh38U','5qzQQFsTiCF92iXyFY5oCtpW8GX0rFDStWwYk5v4iMaLA5z0zK','1919983909-iOT9t0hMoJkZRLLFIglSJyL1PQzhETAjV2NsDtv','TeHAWOq9I7BuzgeWtheIM2y5smQuFlTwLwDHyPbqD7ZhG')
+```
+
+```{r}
+tweets <-searchTwitter('#lawancovid',n=10)
+indonesianext.df<-twListToDF(tweets)
+View(indonesianext.df)
+write.csv(indonesianext.df,file = 'tweetclean.csv')
+```
+
+```{r cleaning}
+sentiment = read.csv("tweetclean.csv")
+text = sentiment$text   # save tweets to another data set "text"
+
+text = gsub("(RT|via)((?:\\b\\W*@\\w+)+)","",text)         #remove names
+text = gsub("http[^[:blank:]]+","",text)                   #remove html links
+text = gsub("@\\w+","",text)                               #remove people names
+text = gsub("[[:punct:]]","",text)                         #remove punctuations
+text = trimws(text, which = c("both", "left", "right"))    # remove whitespace
+
+text = gsub('[[:digit:]]+', '', text)                      # remove digits
+text = gsub("[\r\n]", "", text)                            # remove line breaks
+text = iconv(text, to = "ASCII//TRANSLIT")                 # remove not readable standard text
+text = iconv(text, "ASCII", "UTF-8", sub="")               # remove not readable standard text
+text = tolower(text)                                       # lower case
+
+sentiment$text = text
+write.csv(sentiment,file = 'twitclean.csv')
+```
+
+
+
+
+```{r bagi data}
+library(e1071)
+library(caret)
+library(syuzhet)
+#digunakan untuk membaca file csv yang sudah di cleaning data 
+covid_dataset<-read.csv("twitclean.csv",stringsAsFactors = FALSE)
+#digunakan untuk mengeset variabel cloumn text menjadi char
+review <-as.character(covid_dataset$text)
+#Calls the NRC sentiment dictionary to calculate the presence of eight different emotions and their corresponding valence in a text file.
+get_nrc_sentiment('happy')
+get_nrc_sentiment('excitement')
+s<-get_nrc_sentiment(review)
+
+review_combine<-cbind(covid_dataset$text,s)
+par(mar=rep(3,4))
+barplot(colSums(s),col=rainbow(10),ylab='count',main='sentiment analisis')
+```
+```{r bagi data2}
+#library untuk penggunaan corpus dalam cleaning data
+library(tm)
+library(RTextTools)
+#library yang terdapat sebuah algoritma naivebayes
+library(e1071)
+library(dplyr)
+library(caret)
+df<-read.csv("twitclean.csv",stringsAsFactors = FALSE)
+glimpse(df)
+
+#Set the seed of R‘s random number generator, which is useful for creating simulations or random objects that can be reproduced.
+set.seed(20)
+df<-df[sample(nrow(df)),]
+df<-df[sample(nrow(df)),]
+glimpse(df)
+
+df$index=as.factor(df$index)
+corpus<-Corpus(VectorSource(df$text))
+corpus
+inspect(corpus[1:10])
+#fungsinya untuk membersihkan data data yang tidak dibutuhkan 
+corpus.clean<-corpus%>%
+    tm_map(content_transformer(tolower))%>%
+    tm_map(removePunctuation)%>%
+    tm_map(removeNumbers)%>%
+    tm_map(removeWords,stopwords(kind="en"))%>%
+    tm_map(stripWhitespace)
+dtm<-DocumentTermMatrix(corpus.clean)
+
+inspect(dtm[1:10,1:20])
+
+df.train<-df[1:50,]
+df.test<-df[51:100,]
+
+dtm.train<-dtm[1:50,]
+dtm.test<-dtm[51:100,]
+
+corpus.clean.train<-corpus.clean[1:50]
+corpus.clean.test<-corpus.clean[51:100]
+
+dim(dtm.train)
+fivefreq<-findFreqTerms(dtm.train,5)
+length(fivefreq)
+
+dtm.train.nb<-DocumentTermMatrix(corpus.clean.train,control = list(dictionary=fivefreq))
+
+#dim(dtm.train.nb)
+
+dtm.test.nb<-DocumentTermMatrix(corpus.clean.test,control = list(dictionary=fivefreq))
+
+dim(dtm.test.nb)
+ 
+convert_count <- function(x){
+    y<-ifelse(x>0,1,0)
+    y<-factor(y,levels=c(0,1),labels=c("no","yes"))
+    y
+}
+trainNB<-apply(dtm.train.nb,2,convert_count)
+testNB<-apply(dtm.test.nb,1,convert_count)
+
+
+classifier<-naiveBayes(trainNB,df.train$index,laplace = 1)
+library(wordcloud)
+wordcloud(corpus.clean,min.freq = 4,max.words=100,random.order=F,colors=brewer.pal(8,"Dark2"))
+
+```
+
+```{r global}
+library(shiny)
+library(here)
+library(vroom)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(syuzhet)
+
+twitter<- vroom(here("twitclean.csv"))
+tweet<- twitter$text
+ui <- fluidPage(
+    titlePanel("COVID-19 TWITTER DATA"),
+        mainPanel(
+            
+            tabsetPanel(type = "tabs",
+                        tabPanel("Scatterplot", plotOutput("scatterplot")), 
+                        # Plot
+                        tabPanel("Data dalam bahasa indonesia", DT::dataTableOutput('tbl')), # Output Data Dalam Tabel
+                        tabPanel("Wordcloud", plotOutput("Wordcloud"))
+                        )
+        )
+    )
+# SERVER
+server <- function(input, output) {
+    
+
+    # Output Data
+    output$tbl = DT::renderDataTable({
+        DT::datatable(twitter, options = list(lengthChange = FALSE))
+    })
+    
+    output$scatterplot <- renderPlot({covid_dataset<-read.csv("twitclean.csv",stringsAsFactors = FALSE)
+
+review <-as.character(covid_dataset$text)
+
+get_nrc_sentiment('happy')
+get_nrc_sentiment('excitement')
+s<-get_nrc_sentiment(review)
+
+review_combine<-cbind(covid_dataset$text,s)
+par(mar=rep(3,4))
+barplot(colSums(s),col=rainbow(10),ylab='count',main='sentiment analisis')
+    }, height=400)
+    output$Wordcloud <- renderPlot({
+    set.seed(20)
+df<-df[sample(nrow(df)),]
+df<-df[sample(nrow(df)),]
+glimpse(df)
+
+df$index=as.factor(df$index)
+corpus<-Corpus(VectorSource(df$text))
+corpus
+inspect(corpus[1:10])
+#fungsinya untuk membersihkan data data yang tidak dibutuhkan 
+corpus.clean<-corpus%>%
+    tm_map(content_transformer(tolower))%>%
+    tm_map(removePunctuation)%>%
+    tm_map(removeNumbers)%>%
+    tm_map(removeWords,stopwords(kind="en"))%>%
+    tm_map(stripWhitespace)
+dtm<-DocumentTermMatrix(corpus.clean)
+
+inspect(dtm[1:10,1:20])
+
+df.train<-df[1:50,]
+df.test<-df[51:100,]
+
+dtm.train<-dtm[1:50,]
+dtm.test<-dtm[51:100,]
+
+corpus.clean.train<-corpus.clean[1:50]
+corpus.clean.test<-corpus.clean[51:100]
+
+dim(dtm.train)
+fivefreq<-findFreqTerms(dtm.train,5)
+length(fivefreq)
+
+dtm.train.nb<-DocumentTermMatrix(corpus.clean.train,control = list(dictionary=fivefreq))
+
+#dim(dtm.train.nb)
+
+dtm.test.nb<-DocumentTermMatrix(corpus.clean.test,control = list(dictionary=fivefreq))
+
+dim(dtm.test.nb)
+ 
+convert_count <- function(x){
+    y<-ifelse(x>0,1,0)
+    y<-factor(y,levels=c(0,1),labels=c("no","yes"))
+    y
+}
+trainNB<-apply(dtm.train.nb,2,convert_count)
+testNB<-apply(dtm.test.nb,1,convert_count)
+
+
+classifier<-naiveBayes(trainNB,df.train$index,laplace = 1)
+library(wordcloud)
+wordcloud(corpus.clean,min.freq = 4,max.words=100,random.order=F,colors=brewer.pal(8,"Dark2"))
+  })
+}
+shinyApp(ui = ui, server = server)
+```
+
